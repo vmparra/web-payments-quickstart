@@ -17,12 +17,21 @@
         return card;
       }
 
-      async function createPayment(token) {
-        const body = JSON.stringify({
+      // verificationToken can be undefined, as it does not apply to all payment
+      // methods.
+      async function createPayment(token, verificationToken) {
+        const bodyParameters = {
           locationId,
           sourceId: token,
-        });
+        };
 
+        if (verificationToken !== undefined) {
+          bodyParameters.verificationToken = verificationToken;
+        }
+
+        const body = JSON.stringify(bodyParameters);
+
+        // Same as in the cards example.
         const paymentResponse = await fetch('/payment', {
           method: 'POST',
           headers: {
@@ -55,6 +64,31 @@
         }
       }
 
+      async function verifyBuyer(payments, token) {
+        const verificationDetails = {
+          amount: '1.00',
+          /* collected from the buyer */
+          billingContact: {
+            addressLines: ['123 Main Street', 'Apartment 1'],
+            familyName: 'Doe',
+            givenName: 'John',
+            email: 'jondoe@gmail.com',
+            country: 'GB',
+            phone: '3214563987',
+            region: 'LND',
+            city: 'London',
+          },
+          currencyCode: 'GBP',
+          intent: 'CHARGE',
+        };
+
+        const verificationResults = await payments.verifyBuyer(
+          token,
+          verificationDetails
+        );
+        return verificationResults.token;
+      }
+
       // status is either SUCCESS or FAILURE;
       function displayPaymentResults(status) {
         const statusContainer = document.getElementById(
@@ -79,7 +113,8 @@
         let payments;
         try {
           payments = window.Square.payments(appId, locationId);
-        } catch {
+        } catch (error) {
+          console.log(error);
           const statusContainer = document.getElementById(
             'payment-status-container'
           );
@@ -97,14 +132,32 @@
         }
 
         // Checkpoint 2.
-        async function handlePaymentMethodSubmission(event, paymentMethod) {
+        async function handlePaymentMethodSubmission(
+          event,
+          paymentMethod,
+          shouldVerify = false
+        ) {
           event.preventDefault();
 
           try {
-            // disable the submit button as we await tokenization and make a payment request.
+            // disable the submit button as we await tokenization and make a payment
+            // request.
             cardButton.disabled = true;
             const token = await tokenize(paymentMethod);
-            const paymentResults = await createPayment(token);
+            let verificationToken;
+
+            if (shouldVerify) {
+              verificationToken = await verifyBuyer(payments, token);
+            }
+
+            console.debug('Verification Token:', verificationToken);
+
+            //TODO: Add the verification token in Step 2.2
+            const paymentResults = await createPayment(
+              token,
+              verificationToken //new parameter
+            );
+
             displayPaymentResults('SUCCESS');
 
             console.debug('Payment Success', paymentResults);
@@ -117,7 +170,8 @@
 
         const cardButton = document.getElementById('card-button');
         cardButton.addEventListener('click', async function (event) {
-          await handlePaymentMethodSubmission(event, card);
+          // add 3rd argument of `true`
+          await handlePaymentMethodSubmission(event, card, true);
         });
       });
     </script>
